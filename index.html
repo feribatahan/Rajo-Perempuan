@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Silsilah Rajo Perempuan Batahan — v27 Mobile Fixed</title>
+<title>Silsilah Rajo Perempuan Batahan — v29 PDF FIXED</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--ink:#172033;--muted:#667085;--line:#d8dee9;--accent:#1769aa;--accent2:#e8f2fb;--gold:#b7791f;--green:#18794e;}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
@@ -64,14 +65,15 @@ main{padding:22px 16px 50px} .selected{background:linear-gradient(135deg,#1769aa
 <body>
 <header><div class="wrap">
 <h1>Silsilah Keturunan Rajo Perempuan Batahan</h1>
-<div class="sub">Explorer v27 — Pure HTML. Klik nama mana pun untuk membuka seluruh jaringan generasinya.</div>
+<div class="sub">Explorer v30 — All PDF. Klik nama mana pun untuk membuka seluruh jaringan generasinya.</div>
 <div class="toolbar">
 <input id="search" placeholder="Cari nama..." autocomplete="off">
 <button class="primary" id="feriBtn">Fokus Feri Susanto</button>
 <button id="g1Btn">Kembali ke G1</button>
 <button id="allBtn">Tampilkan semua nama</button>
-<button id="downloadBtn">Download Garis Keturunan</button>
-<button id="printBtn">Cetak Garis Keturunan</button>
+<button id="downloadBtn">Download PDF Garis Keturunan</button>
+<button class="primary" id="pdfBtn">Download PDF</button>
+<button id="printBtn">Cetak / Simpan PDF</button>
 </div>
 <div id="results"></div>
 </div></header>
@@ -233,6 +235,105 @@ function downloadLineage(){
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 
+function pdfSafe(s){
+  return String(s)
+    .replace(/[’‘]/g,"'").replace(/[“”]/g,'"')
+    .replace(/[–—]/g,'-').replace(/\u00a0/g,' ')
+    .replace(/[^\x20-\x7E]/g,'');
+}
+function buildPdfLines(){
+  const active=getActiveSetForCurrent();
+  let roots=[...active].filter(id=>{
+    const ps=(parents[String(id)]||[]).map(Number);
+    return !ps.some(p=>active.has(p));
+  });
+  roots.sort((a,b)=>gen(byId[a])-gen(byId[b]) || byId[a].name.localeCompare(byId[b].name,'id'));
+  const lines=[];
+  const visited=new Set();
+  function walk(id,depth,isLast){
+    id=Number(id); if(visited.has(id)) return; const n=byId[id]; if(!n||!active.has(id)) return;
+    visited.add(id);
+    const kids=(children[String(id)]||[]).map(Number).filter(k=>active.has(k));
+    const prefix=depth===0?'':(' '.repeat(Math.max(0,depth-1)*4)+(isLast?'\\-- ':'|-- '));
+    lines.push({text:prefix+'G'+gen(n)+'  '+n.name,depth});
+    kids.forEach((k,i)=>walk(k,depth+1,i===kids.length-1));
+  }
+  roots.forEach((r,i)=>walk(r,0,i===roots.length-1));
+  return lines;
+}
+function pdfEscape(s){
+  return pdfSafe(s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+}
+function wrapPdfText(text,maxChars){
+  const words=pdfSafe(text).split(/\s+/).filter(Boolean);
+  const out=[]; let line='';
+  for(const word of words){
+    if(!line){ line=word; }
+    else if((line+' '+word).length<=maxChars){ line+=' '+word; }
+    else { out.push(line); line=word; }
+  }
+  if(line) out.push(line);
+  return out.length?out:[''];
+}
+function makePdfBytes(title, lines){
+  const W=595, H=842, left=42, top=790, bottom=48, lineH=14;
+  const pages=[]; let page=[]; let y=top;
+  function addText(text,x,yy,size,bold=false){
+    page.push('BT /F1 '+size+' Tf '+(bold?'0.2':'0')+' g 1 0 0 1 '+x+' '+yy+' Tm ('+pdfEscape(text)+') Tj ET');
+  }
+  function newPage(){ if(page.length) pages.push(page.join('\n')); page=[]; y=top; }
+  addText(title,left,y,18,true); y-=28;
+  addText('Pohon hubungan orang tua -> anak berdasarkan data sumber.',left,y,9,false); y-=22;
+  for(const item of lines){
+    const indent=Math.min(item.depth*18,260);
+    const maxChars=Math.max(28,Math.floor((W-left-indent-24)/5.0));
+    const wrapped=wrapPdfText(item.text,maxChars);
+    for(let i=0;i<wrapped.length;i++){
+      if(y<bottom+24){ newPage(); }
+      addText(wrapped[i],left+indent,y,9.5,item.depth===0 && i===0); y-=lineH;
+    }
+    if(item.depth===0) y-=3;
+  }
+  if(y<bottom+24) newPage();
+  addText('Sumber: "Silsilah Keturunan Rajo Perempuan Batahan" - dokumen yang diberikan.',left,y,7.5,false);
+  pages.push(page.join('\n'));
+  const objs=[];
+  objs[1]='<< /Type /Catalog /Pages 2 0 R >>';
+  const pageIds=[]; const contentIds=[];
+  let id=4;
+  for(let i=0;i<pages.length;i++){ pageIds.push(id++); contentIds.push(id++); }
+  objs[2]='<< /Type /Pages /Kids ['+pageIds.map(x=>x+' 0 R').join(' ') +'] /Count '+pages.length+' >>';
+  objs[3]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+  for(let i=0;i<pages.length;i++){
+    const content=pages[i]+'\nBT /F1 7 Tf 0.45 g 1 0 0 1 500 28 Tm (Page '+(i+1)+' / '+pages.length+') Tj ET';
+    objs[pageIds[i]]='<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+W+' '+H+'] /Resources << /Font << /F1 3 0 R >> >> /Contents '+contentIds[i]+' 0 R >>';
+    objs[contentIds[i]]='<< /Length '+content.length+' >>\nstream\n'+content+'\nendstream';
+  }
+  let pdf='%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+  const offsets=[0];
+  for(let i=1;i<objs.length;i++){
+    offsets[i]=pdf.length;
+    pdf+=i+' 0 obj\n'+objs[i]+'\nendobj\n';
+  }
+  const xref=pdf.length;
+  pdf+='xref\n0 '+objs.length+'\n0000000000 65535 f \n';
+  for(let i=1;i<objs.length;i++) pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';
+  pdf+='trailer\n<< /Size '+objs.length+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF';
+  return new TextEncoder().encode(pdf);
+}
+function downloadPdf(){
+  const title=current!=null ? 'Garis Keturunan - '+byId[current].name : 'Silsilah Keturunan Rajo Perempuan Batahan';
+  const lines=buildPdfLines();
+  const bytes=makePdfBytes(title,lines);
+  const blob=new Blob([bytes],{type:'application/pdf'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const safe=(current!=null?byId[current].name:'Lengkap').replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'');
+  a.href=url; a.download='Silsilah_Garis_Keturunan_'+(safe||'Lengkap')+'.pdf';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+
 function printLineage(){
   const html=buildLineageDocument();
   const w=window.open('','_blank','width=1100,height=800');
@@ -283,8 +384,9 @@ document.getElementById('g1Btn').addEventListener('click',function(){
   if(n){render(n.id);search.value=n.name;}
 });
 document.getElementById('allBtn').addEventListener('click',renderAll);
-document.getElementById('downloadBtn').addEventListener('click',downloadLineage);
+document.getElementById('downloadBtn').addEventListener('click',downloadPdf);
 document.getElementById('printBtn').addEventListener('click',printLineage);
+document.getElementById('pdfBtn').addEventListener('click',downloadPdf);
 
 const start=findPerson('Feri Susanto',8)||findPerson('Putri Bulan Tarsingit / Boru Nasution',1)||DATA.nodes[0];
 if(start) render(start.id);
