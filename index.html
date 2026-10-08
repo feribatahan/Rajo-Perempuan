@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Silsilah Rajo Perempuan Batahan — v25 Garis Keturunan</title>
+<title>Silsilah Rajo Perempuan Batahan — v27 Mobile Fixed</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--ink:#172033;--muted:#667085;--line:#d8dee9;--accent:#1769aa;--accent2:#e8f2fb;--gold:#b7791f;--green:#18794e;}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
@@ -40,14 +40,31 @@ main{padding:22px 16px 50px} .selected{background:linear-gradient(135deg,#1769aa
   .lineage-card:active{transform:scale(.99)}
 }
 @media(min-width:651px){
+  .mobile-lineage{display:none}
   .lineage-card{font:inherit;color:inherit;text-align:left}
 }
+@media(max-width:650px){
+  .desktop-lineage{display:none}
+  .lineage-main{overflow:visible;padding:4px 0 24px}
+  .lineage-tree{width:100%;min-width:0;padding:4px 0 20px}
+  .mobile-lineage{width:100%;}
+  .mobile-item{position:relative;width:100%;padding:0 0 0 calc(var(--depth) * 14px);margin:0;}
+  .mobile-item:before{content:"";position:absolute;left:calc(var(--depth) * 14px - 7px);top:0;bottom:0;border-left:2px solid #d0d5dd;}
+  .mobile-item:first-child:before{top:50%;}
+  .mobile-item:last-child:before{bottom:50%;}
+  .mobile-card{display:block;width:100%;min-width:0;max-width:none;margin:5px 0;padding:10px 11px;border:1px solid #d8dee9;border-radius:10px;background:#fff;text-align:left;font:inherit;color:inherit;box-shadow:0 1px 3px rgba(16,24,40,.06);cursor:pointer;}
+  .mobile-card.focus{border:2px solid #1769aa;background:#e8f2fb;padding:9px 10px;}
+  .mobile-card .lname{display:block;font-weight:750;font-size:15px;line-height:1.25;overflow-wrap:anywhere;}
+  .mobile-card .lmeta{display:block;font-size:11px;color:#667085;margin-top:3px;line-height:1.3;overflow-wrap:anywhere;}
+  .mobile-depth{display:inline-block;margin-right:6px;padding:1px 5px;border-radius:5px;background:#f0f2f5;font-size:10px;color:#667085;font-weight:700;}
+}
+
 </style>
 </head>
 <body>
 <header><div class="wrap">
 <h1>Silsilah Keturunan Rajo Perempuan Batahan</h1>
-<div class="sub">Explorer v22 — Pure HTML. Klik nama mana pun untuk membuka seluruh jaringan generasinya.</div>
+<div class="sub">Explorer v27 — Pure HTML. Klik nama mana pun untuk membuka seluruh jaringan generasinya.</div>
 <div class="toolbar">
 <input id="search" placeholder="Cari nama..." autocomplete="off">
 <button class="primary" id="feriBtn">Fokus Feri Susanto</button>
@@ -141,10 +158,12 @@ function render(id, showAll=false){
   });
 
   const tree=lineageHtml(active,roots,current);
+  const mobileTree=lineageMobileHtml(active,roots,current);
   const count=active.size;
   network.innerHTML=`<section class="lineage-main">
     <div class="lineage-toolbar"><div><strong>${count} nama dalam jaringan</strong><span> · hubungan ditampilkan menurut garis keturunan</span></div></div>
-    <div class="lineage-tree">${tree||'<div class="empty">Tidak ada jaringan yang dapat ditampilkan.</div>'}</div>
+    <div class="lineage-tree desktop-lineage">${tree||'<div class="empty">Tidak ada jaringan yang dapat ditampilkan.</div>'}</div>
+    <div class="lineage-tree mobile-lineage">${mobileTree||'<div class="empty">Tidak ada jaringan yang dapat ditampilkan.</div>'}</div>
   </section>`;
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -170,6 +189,25 @@ function lineageHtml(activeSet, rootIds, highlightId){
     return html;
   }
   return rootIds.map(r=>nodeHtml(r,0)).join('');
+}
+
+function lineageMobileHtml(activeSet, rootIds, highlightId){
+  const visited=new Set();
+  const out=[];
+  function walk(id,depth){
+    id=Number(id);
+    if(visited.has(id)) return;
+    const n=byId[id];
+    if(!n || !activeSet.has(id)) return;
+    visited.add(id);
+    const cls=id===highlightId?'mobile-card focus':'mobile-card';
+    const ps=(parents[String(id)]||[]).map(x=>byId[Number(x)]?.name).filter(Boolean).join(', ');
+    out.push(`<div class="mobile-item" style="--depth:${depth}"><button type="button" class="${cls}" data-person-id="${id}" aria-label="Pilih ${esc(n.name)}"><span class="lname"><span class="mobile-depth">G${gen(n)}</span>${esc(n.name)}</span><span class="lmeta">${ps?'dari '+esc(ps):'Garis leluhur'}</span></button></div>`);
+    const kids=(children[String(id)]||[]).map(Number).filter(k=>activeSet.has(k));
+    kids.forEach(k=>walk(k,depth+1));
+  }
+  rootIds.forEach(r=>walk(r,0));
+  return out.join('');
 }
 
 function buildLineageDocument(){
