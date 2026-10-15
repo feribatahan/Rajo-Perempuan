@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Silsilah Rajo Perempuan Batahan — v33.3 Online Database</title>
+<title>Silsilah Rajo Perempuan Batahan — v33.6 Parent Map Fix</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -79,7 +79,7 @@ main{padding:22px 16px 50px} .selected{background:linear-gradient(135deg,#1769aa
 <body>
 <header><div class="wrap">
 <h1>Silsilah Keturunan Rajo Perempuan Batahan</h1>
-<div class="sub">Explorer v33.3 — Online Database. Klik nama mana pun untuk membuka seluruh jaringan generasinya.</div>
+<div class="sub">Explorer v33.6 — Online Database. Klik nama mana pun untuk membuka seluruh jaringan generasinya.</div>
 <div class="toolbar">
 <input id="search" placeholder="Cari nama..." autocomplete="off">
 <button class="primary" id="feriBtn">Fokus Feri Susanto</button>
@@ -447,8 +447,8 @@ function rebuildData(personRows, relRows){
     id:Number(p.id),name:p.name,gen:Number(p.gen ?? p.generation ?? 0),
     note:p.note||'',status:p.status||'',source:p.source||''
   }));
-  const parents={}, children={}, edges=[];
-  for(const p of nodes){parents[String(p.id)]=[];children[String(p.id)]=[];}
+  const newParents={}, newChildren={}, edges=[];
+  for(const p of nodes){newParents[String(p.id)]=[];newChildren[String(p.id)]=[];}
   // Gunakan tabel relationships sebagai sumber utama.
   const seen=new Set();
   for(const r of (relRows||[])){
@@ -457,25 +457,29 @@ function rebuildData(personRows, relRows){
     const k=a+'>'+b;
     if(seen.has(k)) continue;
     seen.add(k);
-    parents[String(b)].push(a);children[String(a)].push(b);
+    newParents[String(b)].push(a);newChildren[String(a)].push(b);
     edges.push({from:a,to:b,relation:r.relation||'Anak'});
   }
-  // Fallback kompatibilitas: sebagian data lama juga menyimpan parent_id di persons.
-  // Ini mencegah anak seperti Sultan hilang bila tabel relasi belum lengkap.
+  // Fallback kompatibilitas: gunakan parent_id pada persons bila relasi belum ada.
   for(const p of personRows){
     const a=Number(p.parent_id),b=Number(p.id);
     if(!a||!byPersonExists(nodes,a)||!byPersonExists(nodes,b)||a===b) continue;
     const k=a+'>'+b;
     if(seen.has(k)) continue;
     seen.add(k);
-    parents[String(b)].push(a);children[String(a)].push(b);
+    newParents[String(b)].push(a);newChildren[String(a)].push(b);
     edges.push({from:a,to:b,relation:p.relationship||'Anak'});
   }
-  DATA={nodes,edges,parents,children,source_lines:424};
+  // Perbarui peta global yang benar-benar dipakai fungsi render.
+  parents=newParents;
+  children=newChildren;
+  DATA={nodes,edges,parents:newParents,children:newChildren,source_lines:personRows.length};
   byId=Object.fromEntries(nodes.map(n=>[n.id,n]));
+  window.parents=newParents;
+  window.children=newChildren;
   // Stabilkan urutan anak agar tampilan konsisten.
-  for(const id of Object.keys(children)){
-    children[id].sort((a,b)=>(gen(byId[a])-gen(byId[b]))||byId[a].name.localeCompare(byId[b].name,'id'));
+  for(const id of Object.keys(newChildren)){
+    newChildren[id].sort((a,b)=>(gen(byId[a])-gen(byId[b]))||byId[a].name.localeCompare(byId[b].name,'id'));
   }
 }
 function byPersonExists(nodes,id){return nodes.some(n=>n.id===Number(id));}
